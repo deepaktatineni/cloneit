@@ -1,25 +1,37 @@
 import 'reflect-metadata';
 import express from 'express'
 import { ApolloServer } from 'apollo-server-express'
-import { Connection, IDatabaseDriver, MikroORM } from '@mikro-orm/core'
 
 import Redis from 'ioredis'
 import session from 'express-session'
 import connectRedis from 'connect-redis'
 
+import { createConnection } from 'typeorm'
+
 import { COOKIE_NAME, __prod__ } from './constants'
 import { buildSchema } from 'type-graphql'
 import { HelloResolver } from './resolvers/hello'
 import { PostResolver } from './resolvers/post'
-import ormConfig from './mikro-orm.config'
 import { UserResolver } from './resolvers/user'
+import { Post } from './entities/Post'
+import { User } from './entities/User'
 
 const CORS_CONFIG = { origin: ['http://localhost:3000', 'https://studio.apollographql.com/'], credentials: true }
 
 const main = async () => {
 
-  const orm = await MikroORM.init(ormConfig)
-  runMigrationsIfAny(orm)
+  await createConnection({
+    type: 'postgres',
+    username: 'depkc',
+    password: 'testdb',
+    database: 'reddit2',
+    logging: true,
+    synchronize: true,
+    entities: [User, Post]
+  })
+
+  // const orm = await MikroORM.init(ormConfig)
+  // runMigrationsIfAny(orm)
   const app = express()
 
   const RedisStore = connectRedis(session)
@@ -47,7 +59,7 @@ const main = async () => {
       resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false
     }),
-    context: ({ req, res }) => ({ em: orm.em, req, res, redis: redisClient })
+    context: ({ req, res }) => ({  req, res, redis: redisClient })
   })
 
   await apolloServer.start()
@@ -61,20 +73,4 @@ try {
   main()
 } catch (e) {
   console.log(e)
-}
-
-const runMigrationsIfAny = async (orm: MikroORM<IDatabaseDriver<Connection>>) => {
-
-  const migrator = await orm.getMigrator()
-  const migrationsToBeRun = await migrator.getPendingMigrations()
-
-  if (migrationsToBeRun.length === 0) {
-    return
-  }
-
-  migrationsToBeRun
-    .map(m => m.file)
-    .forEach(f => {
-      migrator.up(f)
-    })
 }
